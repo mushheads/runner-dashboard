@@ -356,8 +356,7 @@ fn cmd_start(target: &str) -> Result<()> {
         runner::start_all(&config);
         Ok(())
     } else {
-        let scope = RunnerScope::parse(target)?;
-        runner::start_runner(&config, &scope)
+        runner::start_runner(&config, target)
     }
 }
 
@@ -367,8 +366,7 @@ fn cmd_stop(target: &str) -> Result<()> {
         runner::stop_all(&config);
         Ok(())
     } else {
-        let scope = RunnerScope::parse(target)?;
-        runner::stop_runner(&config, &scope)
+        runner::stop_runner(&config, target)
     }
 }
 
@@ -378,8 +376,7 @@ fn cmd_restart(target: &str) -> Result<()> {
         runner::restart_all(&config);
         Ok(())
     } else {
-        let scope = RunnerScope::parse(target)?;
-        runner::restart_runner(&config, &scope)
+        runner::restart_runner(&config, target)
     }
 }
 
@@ -392,14 +389,20 @@ fn cmd_status() -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<40}  {:<10}  {:<20}", "TARGET", "STATUS", "SERVICE");
-    println!("{:<40}  {:<10}  {:<20}", "------", "------", "-------");
+    println!(
+        "{:<32}  {:<22}  {:<10}  {:<20}",
+        "TARGET", "RUNNER", "STATUS", "SERVICE"
+    );
+    println!(
+        "{:<32}  {:<22}  {:<10}  {:<20}",
+        "------", "------", "------", "-------"
+    );
 
     for instance in &instances {
         let svc = instance.service_name.as_deref().unwrap_or("-");
         println!(
-            "{:<40}  {:<10}  {:<20}",
-            instance.scope, instance.status, svc
+            "{:<32}  {:<22}  {:<10}  {:<20}",
+            instance.scope, instance.runner_name, instance.status, svc
         );
     }
 
@@ -407,9 +410,8 @@ fn cmd_status() -> Result<()> {
 }
 
 fn cmd_logs(target: &str, lines: u32) -> Result<()> {
-    let scope = RunnerScope::parse(target)?;
     let config = Config::load()?;
-    let logs = runner::get_runner_logs(&config, &scope, lines)?;
+    let logs = runner::get_runner_logs(&config, target, lines)?;
     println!("{logs}");
     Ok(())
 }

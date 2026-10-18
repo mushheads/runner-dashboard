@@ -131,8 +131,7 @@ fn test_get_logs_nonexistent_repo() {
         instances_base: tmp.path().to_str().unwrap().to_string(),
     };
 
-    let scope = RunnerScope::parse("nonexistent/repo").unwrap();
-    let result = runner_mgr::runner::get_runner_logs(&config, &scope, 50);
+    let result = runner_mgr::runner::get_runner_logs(&config, "nonexistent/repo", 50);
     assert!(result.is_err());
     let err = format!("{:#}", result.unwrap_err());
     assert!(err.contains("No runner configured"));
