@@ -253,13 +253,43 @@ fn get_user_uid(username: &str) -> Result<u32> {
 }
 
 pub async fn add_runner(config: &Config, scope: &RunnerScope, labels: &str) -> Result<()> {
-    let dir = config.instance_dir(scope);
+    let hostname = hostname::get().map_or_else(
+        |_| "runner".to_string(),
+        |h| h.to_string_lossy().to_string(),
+    );
+    let safe_name = scope.to_dir_name();
+    let generated_name = format!("{hostname}-{safe_name}");
+    let base_name = generated_name[..generated_name.len().min(64)].to_string();
+
+    let existing_names: std::collections::HashSet<String> = list_instances(config)
+        .into_iter()
+        .map(|instance| instance.runner_name)
+        .collect();
+
+    let mut runner_name = base_name.clone();
+    let mut suffix_number = 2usize;
+
+    while existing_names.contains(&runner_name) {
+        let suffix = format!("-{suffix_number}");
+        let max_prefix_len = 64usize.saturating_sub(suffix.len());
+        let prefix_len = base_name.len().min(max_prefix_len);
+        runner_name = format!("{}{}", &base_name[..prefix_len], suffix);
+        suffix_number += 1;
+    }
+
+    let dir = config.instance_dir_named(scope, &runner_name);
 
     if dir.exists() {
-        anyhow::bail!("Runner already configured for {scope}. Use 'remove' first.");
+        anyhow::bail!(
+            "Runner '{}' already configured for {} at {}",
+            runner_name,
+            scope,
+            dir.display()
+        );
     }
 
     println!("Adding runner for {scope}...");
+    println!("  Runner: {runner_name}");
 
     let mut labels = labels.to_string();
     if !labels.contains("self-hosted") {
@@ -291,14 +321,6 @@ pub async fn add_runner(config: &Config, scope: &RunnerScope, labels: &str) -> R
     )?;
 
     // Configure the runner
-    let hostname = hostname::get().map_or_else(
-        |_| "runner".to_string(),
-        |h| h.to_string_lossy().to_string(),
-    );
-    let safe_name = scope.to_dir_name();
-    let runner_name = format!("{hostname}-{safe_name}");
-    let runner_name = &runner_name[..runner_name.len().min(64)];
-
     println!("Configuring runner (name: {runner_name})...");
     let config_sh = dir.join("config.sh");
     run_cmd(
@@ -312,7 +334,7 @@ pub async fn add_runner(config: &Config, scope: &RunnerScope, labels: &str) -> R
             "--token",
             &reg.token,
             "--name",
-            runner_name,
+            &runner_name,
             "--labels",
             &labels,
             "--unattended",
@@ -364,14 +386,13 @@ pub async fn add_runner(config: &Config, scope: &RunnerScope, labels: &str) -> R
     Ok(())
 }
 
-pub async fn remove_runner(config: &Config, scope: &RunnerScope) -> Result<()> {
-    let dir = config.instance_dir(scope);
+pub async fn remove_runner(config: &Config, selector: &str) -> Result<()> {
+    let instance = find_instance(config, selector)?;
+    let scope = &instance.scope;
+    let runner_name = &instance.runner_name;
+    let dir = instance.dir.clone();
 
-    if !dir.exists() {
-        anyhow::bail!("No runner configured for {scope}");
-    }
-
-    println!("Removing runner for {scope}...");
+    println!("Removing runner {runner_name} ({scope})...");
 
     let svc_sh = dir.join("svc.sh");
     let svc_sh_path = svc_sh.to_string_lossy();
@@ -425,7 +446,7 @@ pub async fn remove_runner(config: &Config, scope: &RunnerScope) -> Result<()> {
     println!("Removing instance directory...");
     run_cmd("sudo", &["rm", "-rf", &dir.to_string_lossy()])?;
 
-    println!("Runner removed for {scope}");
+    println!("Runner removed: {runner_name} ({scope})");
     Ok(())
 }
 
